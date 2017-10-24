@@ -9,6 +9,46 @@ from collections import deque
 from baselines.common.mpi_adam import MpiAdam
 from baselines.common.cg import cg
 from contextlib import contextmanager
+import os
+
+# Sample one trajectory (until trajectory end)
+def traj_episode_generator(pi, env, horizon, stochastic):
+    t = 0
+    ac = env.action_space.sample() # not used, just so we have the datatype
+    new = True # marks if we're on first timestep of an episode
+
+    ob = env.reset()
+    cur_ep_ret = 0 # return in current episode
+    cur_ep_len = 0 # len of current episode
+
+    # Initialize history arrays
+    obs = []; rews = []; news = []; acs = []
+
+    while True:
+        prevac = ac
+        ac, vpred = pi.act(stochastic, ob)
+        obs.append(ob)
+        news.append(new)
+        acs.append(ac)
+        ob, rew, new, _ = env.step(ac)
+        rews.append(rew)
+
+        cur_ep_ret += rew
+        cur_ep_len += 1
+        if t > 0 and (new or t % horizon == 0):
+            # convert list into numpy array
+            obs = np.array(obs)
+            rews = np.array(rews)
+            news = np.array(news)
+            acs = np.array(acs)
+            yield {"ob":obs, "rew":rews, "new":news, "ac":acs,
+                    "ep_ret":cur_ep_ret, "ep_len":cur_ep_len}
+            ob = env.reset()
+            cur_ep_ret = 0; cur_ep_len = 0; t = 0
+
+            # Initialize history arrays
+            obs = []; rews = []; news = []; acs = []
+        t += 1
 
 def traj_segment_generator(pi, env, horizon, stochastic):
     # Initialize state variables
@@ -88,7 +128,11 @@ def learn(env, policy_func, *,
         vf_stepsize=3e-4,
         vf_iters =3,
         max_timesteps=0, max_episodes=0, max_iters=0,  # time constraint
-        callback=None
+        callback=None,
+        sample_stochastic=True, task="train",
+        ckpt_dir=None, save_per_iter=100,
+        load_model_path=None, task_name=None,
+        max_sample_traj=1500
         ):
     nworkers = MPI.COMM_WORLD.Get_size()
     rank = MPI.COMM_WORLD.Get_rank()
@@ -175,6 +219,7 @@ def learn(env, policy_func, *,
     # Prepare for rollouts
     # ----------------------------------------
     seg_gen = traj_segment_generator(pi, env, timesteps_per_batch, stochastic=True)
+    traj_gen =  traj_episode_generator(pi, env, timesteps_per_batch, stochastic=sample_stochastic)
 
     episodes_so_far = 0
     timesteps_so_far = 0
@@ -184,6 +229,10 @@ def learn(env, policy_func, *,
     rewbuffer = deque(maxlen=40) # rolling buffer for episode rewards
 
     assert sum([max_iters>0, max_timesteps>0, max_episodes>0])==1
+    if task == 'sample_trajectory':
+        # not elegant, i know :(
+        sample_trajectory(load_model_path, max_sample_traj, traj_gen, task_name, sample_stochastic)
+        sys.exit()
 
     while True:        
         if callback: callback(locals(), globals())
@@ -194,6 +243,9 @@ def learn(env, policy_func, *,
         elif max_iters and iters_so_far >= max_iters:
             break
         logger.log("********** Iteration %i ************"%iters_so_far)
+        # Save model
+        if iters_so_far % save_per_iter == 0 and ckpt_dir is not None:
+            U.save_state(os.path.join(ckpt_dir, task_name))
 
         with timed("sampling"):
             seg = seg_gen.__next__()
@@ -287,5 +339,30 @@ def learn(env, policy_func, *,
         if rank==0:
             logger.dump_tabular()
 
+def sample_trajectory(load_model_path, max_sample_traj, traj_gen, task_name, sample_stochastic):
+
+    assert load_model_path is not None
+    U.load_state(load_model_path)
+    sample_trajs = []
+    for iters_so_far in range(max_sample_traj):
+        logger.log("********** Iteration %i ************"%iters_so_far)
+        traj = traj_gen.__next__()
+        ob, new, ep_ret, ac, rew, ep_len = traj['ob'], traj['new'], traj['ep_ret'], traj['ac'], traj['rew'], traj['ep_len']
+        logger.record_tabular("ep_ret", ep_ret)
+        logger.record_tabular("ep_len", ep_len)
+        logger.record_tabular("immediate reward", np.mean(rew))
+        if MPI.COMM_WORLD.Get_rank()==0:
+            logger.dump_tabular()
+        traj_data = {"ob":ob, "ac":ac, "rew": rew, "ep_ret":ep_ret}
+        sample_trajs.append(traj_data)
+
+    sample_ep_rets = [traj["ep_ret"] for traj in sample_trajs]
+    logger.log("Average total return: %f"%(sum(sample_ep_rets)/len(sample_ep_rets)))
+    if sample_stochastic:
+        task_name = 'stochastic.' + task_name
+    else:
+        task_name = 'deterministic.' + task_name
+    pkl.dump(sample_trajs, open(task_name+".pkl", "wb"))
+    
 def flatten_lists(listoflists):
     return [el for list_ in listoflists for el in list_]

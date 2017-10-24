@@ -51,7 +51,7 @@ def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--env', help='environment ID', default='PongNoFrameskip-v4')
     parser.add_argument('--seed', help='RNG seed', type=int, default=0)
-    parser.add_argument('--task', help='Choose to do which task', type=str, choices=['train', 'sample_trajectory'], default='train')
+    parser.add_argument('--task', help='Choose to do which task', type=str, choices=['train', 'sample_trajectory', 'play'], default='train')
     parser.add_argument('--sample_stochastic', type=bool, default=False)
     parser.add_argument('--num_cpu', help='number of cpu to used', type=int, default=1)
     parser.add_argument('--entcoeff', help='entropy coefficiency', type=float, default=0)

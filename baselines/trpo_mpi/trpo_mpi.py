@@ -234,7 +234,11 @@ def learn(env, policy_func, *,
         sample_trajectory(load_model_path, max_sample_traj, traj_gen, task_name, sample_stochastic)
         sys.exit()
 
-    while True:        
+    if task == 'play':
+        assert load_model_path is not None
+        U.load_state(load_model_path)
+
+    while True:
         if callback: callback(locals(), globals())
         if max_timesteps and timesteps_so_far >= max_timesteps:
             break
@@ -244,7 +248,7 @@ def learn(env, policy_func, *,
             break
         logger.log("********** Iteration %i ************"%iters_so_far)
         # Save model
-        if iters_so_far % save_per_iter == 0 and ckpt_dir is not None:
+        if iters_so_far % save_per_iter == 0 and ckpt_dir is not None and task == 'train' :
             U.save_state(os.path.join(ckpt_dir, task_name))
 
         with timed("sampling"):

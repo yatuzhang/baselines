@@ -1,4 +1,4 @@
-from baselines.common import Dataset, explained_variance, fmt_row, zipsame
+from baselines.common import Dataset, explained_variance, fmt_row, zipsame, traj_episode_generator, sample_trajectory
 from baselines import logger
 import baselines.common.tf_util as U
 import tensorflow as tf, numpy as np
@@ -7,6 +7,8 @@ from baselines.common.mpi_adam import MpiAdam
 from baselines.common.mpi_moments import mpi_moments
 from mpi4py import MPI
 from collections import deque
+import pickle as pkl
+import os
 
 def traj_segment_generator(pi, env, horizon, stochastic):
     t = 0
@@ -85,7 +87,11 @@ def learn(env, policy_func, *,
         max_timesteps=0, max_episodes=0, max_iters=0, max_seconds=0,  # time constraint
         callback=None, # you can do anything in the callback, since it takes locals(), globals()
         adam_epsilon=1e-5,
-        schedule='constant' # annealing for stepsize parameters (epsilon and adam)
+        schedule='constant', # annealing for stepsize parameters (epsilon and adam)
+        save_per_iter=100,
+        ckpt_dir=None, task="train",
+        sample_stochastic=False,
+        load_model_path=None, task_name=None, max_sample_traj=1500
         ):
     # Setup losses and stuff
     # ----------------------------------------
@@ -131,7 +137,7 @@ def learn(env, policy_func, *,
     # Prepare for rollouts
     # ----------------------------------------
     seg_gen = traj_segment_generator(pi, env, timesteps_per_batch, stochastic=True)
-
+    traj_gen = traj_episode_generator(pi, env, timesteps_per_batch, stochastic=sample_stochastic)
     episodes_so_far = 0
     timesteps_so_far = 0
     iters_so_far = 0
@@ -140,6 +146,15 @@ def learn(env, policy_func, *,
     rewbuffer = deque(maxlen=100) # rolling buffer for episode rewards
 
     assert sum([max_iters>0, max_timesteps>0, max_episodes>0, max_seconds>0])==1, "Only one time constraint permitted"
+
+
+    if task == 'sample_trajectory':
+        sample_trajectory(load_model_path, max_sample_traj, traj_gen, task_name, sample_stochastic)
+        sys.exit()
+
+    if task == 'play':
+        assert load_model_path is not None
+        U.load_state(load_model_path)
 
     while True:
         if callback: callback(locals(), globals())
@@ -158,6 +173,10 @@ def learn(env, policy_func, *,
             cur_lrmult =  max(1.0 - float(timesteps_so_far) / max_timesteps, 0)
         else:
             raise NotImplementedError
+
+        # Save model
+        if iters_so_far % save_per_iter == 0 and ckpt_dir is not None and task == 'train':
+            U.save_state(os.path.join(ckpt_dir, task_name), counter=iters_so_far)
 
         logger.log("********** Iteration %i ************"%iters_so_far)
 

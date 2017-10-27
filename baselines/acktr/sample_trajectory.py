@@ -65,9 +65,6 @@ def run():
             state = update_obs(state,obs)
             actions, values, states = act.step(state, states, [done])
             obs, rew, done, _ = env.step(actions[0])
-            print(state.shape)
-            print(obs.shape)
-            print(actions.shape)
             episode_reward += rew
         rewards.append(episode_reward)
         logger.record_tabular("Episode", episode)

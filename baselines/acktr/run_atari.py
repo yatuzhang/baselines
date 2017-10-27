@@ -8,7 +8,7 @@ from baselines.common.vec_env.subproc_vec_env import SubprocVecEnv
 from baselines.common.atari_wrappers import wrap_deepmind
 from baselines.acktr.policies import CnnPolicy
 
-def train(env_id, num_frames, seed, num_cpu):
+def train(env_id, num_frames, seed, num_cpu, save_interval, ckpt_dir):
     num_timesteps = int(num_frames / 4 * 1.1) 
     def make_env(rank):
         def _thunk():
@@ -22,7 +22,7 @@ def train(env_id, num_frames, seed, num_cpu):
     set_global_seeds(seed)
     env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
     policy_fn = CnnPolicy
-    learn(policy_fn, env, seed, total_timesteps=num_timesteps, nprocs=num_cpu)
+    learn(policy_fn, env, seed, total_timesteps=num_timesteps, nprocs=num_cpu, save_interval=save_interval, ckpt_dir=ckpt_dir)
     env.close()
 
 def main():
@@ -32,8 +32,12 @@ def main():
     parser.add_argument('--seed', help='RNG seed', type=int, default=0)
     parser.add_argument('--million_frames', help='How many frames to train (/ 1e6). '
         'This number gets divided by 4 due to frameskip', type=int, default=40)
+    parser.add_argument('--save_interval', help='How often to save model', type=int, default=100)
+    parser.add_argument('--ckpt_dir', help='Model save directory', default='checkpoint')
+
     args = parser.parse_args()    
-    train(args.env, num_frames=1e6 * args.million_frames, seed=args.seed, num_cpu=32)
+    train(args.env, num_frames=1e6 * args.million_frames, seed=args.seed, num_cpu=32, 
+        save_interval=args.save_interval, ckpt_dir=args.ckpt_dir)
 
 
 if __name__ == '__main__':

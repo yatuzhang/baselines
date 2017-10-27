@@ -169,7 +169,7 @@ class Runner(object):
 
 def learn(policy, env, seed, total_timesteps=int(40e6), gamma=0.99, log_interval=1, nprocs=32, nsteps=20,
                  nstack=4, ent_coef=0.01, vf_coef=0.5, vf_fisher_coef=1.0, lr=0.25, max_grad_norm=0.5,
-                 kfac_clip=0.001, save_interval=None, lrschedule='linear'):
+                 kfac_clip=0.001, save_interval=None, lrschedule='linear', ckpt_dir=None, load_model_path=None):
     tf.reset_default_graph()
     set_global_seeds(seed)
 
@@ -180,9 +180,9 @@ def learn(policy, env, seed, total_timesteps=int(40e6), gamma=0.99, log_interval
                                 =nsteps, nstack=nstack, ent_coef=ent_coef, vf_coef=vf_coef, vf_fisher_coef=
                                 vf_fisher_coef, lr=lr, max_grad_norm=max_grad_norm, kfac_clip=kfac_clip,
                                 lrschedule=lrschedule)
-    if save_interval and logger.get_dir():
+    if save_interval and ckpt_dir:
         import cloudpickle
-        with open(osp.join(logger.get_dir(), 'make_model.pkl'), 'wb') as fh:
+        with open(osp.join(ckpt_dir, 'make_model.pkl'), 'wb') as fh:
             fh.write(cloudpickle.dumps(make_model))
     model = make_model()
 
@@ -207,8 +207,8 @@ def learn(policy, env, seed, total_timesteps=int(40e6), gamma=0.99, log_interval
             logger.record_tabular("explained_variance", float(ev))
             logger.dump_tabular()
 
-        if save_interval and (update % save_interval == 0 or update == 1) and logger.get_dir():
-            savepath = osp.join(logger.get_dir(), 'checkpoint%.5i'%update)
+        if save_interval and (update % save_interval == 0 or update == 1) and ckpt_dir:
+            savepath = osp.join(ckpt_dir, 'checkpoint%.5i'%update)
             print('Saving to', savepath)
             model.save(savepath)
 

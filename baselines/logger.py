@@ -266,8 +266,8 @@ def configure(dir=None, format_strs=None):
     if dir is None:
         dir = os.getenv('OPENAI_LOGDIR')
     if dir is None:
-        dir = osp.join(tempfile.gettempdir(), 
-            datetime.datetime.now().strftime("openai-%Y-%m-%d-%H-%M-%S-%f"))
+        dir = tempfile.gettempdir()
+    dir = osp.join(dir, datetime.datetime.now().strftime("openai-%Y-%m-%d-%H-%M-%S-%f"))
     if format_strs is None:
         format_strs = LOG_OUTPUT_FORMATS
     output_formats = [make_output_format(f, dir) for f in format_strs]

@@ -273,10 +273,11 @@ def load_state(fname):
     saver.restore(get_session(), fname)
 
 
-def save_state(fname):
+def save_state(fname, counter=None):
     os.makedirs(os.path.dirname(fname), exist_ok=True)
     saver = tf.train.Saver()
-    saver.save(get_session(), fname)
+    if counter is not None: saver.save(get_session(), fname, global_step=counter)
+    else: saver.save(get_session(), fname)
 
 # ================================================================
 # Model components

@@ -326,3 +326,68 @@ def pickle_load(path, compression=False):
     else:
         with open(path, "rb") as f:
             return pickle.load(f)
+
+# Adopted from: https://github.com/andrewliao11/gail-tf
+def traj_episode_generator(pi, env, horizon, stochastic):
+    t = 0
+    ac = env.action_space.sample() # not used, just so we have the datatype
+    new = True # marks if we're on first timestep of an episode
+
+    ob = env.reset()
+    cur_ep_ret = 0 # return in current episode
+    cur_ep_len = 0 # len of current episode
+
+    # Initialize history arrays
+    obs = []; rews = []; news = []; acs = []
+
+    while True:
+        prevac = ac
+        ac, vpred = pi.act(stochastic, ob)
+        obs.append(ob)
+        news.append(new)
+        acs.append(ac)
+        ob, rew, new, _ = env.step(ac)
+        rews.append(rew)
+
+        cur_ep_ret += rew
+        cur_ep_len += 1
+        if t > 0 and (new or t % horizon == 0):
+            # convert list into numpy array
+            obs = np.array(obs)
+            rews = np.array(rews)
+            news = np.array(news)
+            acs = np.array(acs)
+            yield {"ob":obs, "rew":rews, "new":news, "ac":acs,
+                    "ep_ret":cur_ep_ret, "ep_len":cur_ep_len}
+            ob = env.reset()
+            cur_ep_ret = 0; cur_ep_len = 0; t = 0
+
+            # Initialize history arrays
+            obs = []; rews = []; news = []; acs = []
+        t += 1
+
+# Adopted from: https://github.com/andrewliao11/gail-tf
+def sample_trajectory(load_model_path, max_sample_traj, traj_gen, task_name, sample_stochastic):
+
+    assert load_model_path is not None
+    U.load_state(load_model_path)
+    sample_trajs = []
+    for iters_so_far in range(max_sample_traj):
+        logger.log("********** Iteration %i ************"%iters_so_far)
+        traj = traj_gen.__next__()
+        ob, new, ep_ret, ac, rew, ep_len = traj['ob'], traj['new'], traj['ep_ret'], traj['ac'], traj['rew'], traj['ep_len']
+        logger.record_tabular("ep_ret", ep_ret)
+        logger.record_tabular("ep_len", ep_len)
+        logger.record_tabular("immediate reward", np.mean(rew))
+        if MPI.COMM_WORLD.Get_rank()==0:
+            logger.dump_tabular()
+        traj_data = {"ob":ob, "ac":ac, "rew": rew, "ep_ret":ep_ret}
+        sample_trajs.append(traj_data)
+
+    sample_ep_rets = [traj["ep_ret"] for traj in sample_trajs]
+    logger.log("Average total return: %f"%(sum(sample_ep_rets)/len(sample_ep_rets)))
+    if sample_stochastic:
+        task_name = 'stochastic.' + task_name
+    else:
+        task_name = 'deterministic.' + task_name
+    pkl.dump(sample_trajs, open(task_name+".pkl", "wb"))

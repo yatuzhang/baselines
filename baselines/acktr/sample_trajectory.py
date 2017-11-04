@@ -17,6 +17,11 @@ from baselines.common import set_global_seeds, explained_variance
 from baselines import logger
 from baselines import bench
 
+import matplotlib as mpl
+mpl.use('Agg')
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
 def update_obs(state, obs):
     obs = np.reshape( obs, state.shape[0:3] )
     state = np.roll(state, shift=-1, axis=3)
@@ -53,6 +58,19 @@ def run():
     
     episode = 1
     rewards= deque(maxlen=100)
+    
+    if args.save_ani:
+        if args.max_episodes == 0 or args.max_episodes > 10:
+            print("Are you sure you want to save that many episodes?")
+            print("Exiting")
+            exit()
+        fig = plt.figure()
+        ims = []
+        
+    if args.save_trajectory:
+        states_arr = []
+        features_arr = []
+        action_values =[]
 
     while args.max_episodes == 0 or episode <= args.max_episodes:
         state = np.zeros(batch_state_shape, dtype=np.uint8)
@@ -62,16 +80,30 @@ def run():
         done = False
         episode_reward = 0
         while not done:
+            if args.save_ani:
+                im = plt.imshow(env.render(mode='rgb_array'))
+                ims.append([im])
             state = update_obs(state,obs)
-            actions, values, states = act.step(state, states, [done])
+            actions, values, features, states = act.step_w_features(state, states, [done])
             obs, rew, done, _ = env.step(actions[0])
             episode_reward += rew
+            if args.save_trajectory:
+                states_arr.append(state)
+                features_arr.append(features)
+                action_values.append(actions)
+        if args.save_ani:
+            ani = animation.ArtistAnimation(fig, ims, interval=20)
+            ani.save(os.path.join(args.save_ani_path,'episode_{}.mp4'.format(episode)))
+            ims=[]
         rewards.append(episode_reward)
         logger.record_tabular("Episode", episode)
         logger.record_tabular("Immediate Reward", float(episode_reward))
         logger.record_tabular("Running Average", float(np.mean(rewards)))
         logger.dump_tabular()
         episode += 1
+        
+    if args.save_trajectory:
+        np.savez("data", states=states_arr,features=features_arr, action_values=action_values)
 
 
 if __name__ == '__main__':
@@ -81,6 +113,9 @@ if __name__ == '__main__':
     parser.add_argument("--max_episodes", default="1500", type=int, help="Maximum number of episodes to play.")
     parser.add_argument('--env', help='environment ID', default='BreakoutNoFrameskip-v4')
     parser.add_argument("--load_model_path", help="Loading the saved model")
+    parser.add_argument("--save_trajectory", type=bool, default=False, help="Saves an animation of the run")
+    parser.add_argument("--save_ani", type=bool, default=False, help="Saves an animation of the run")
+    parser.add_argument("--save_ani_path", default='./', help="directory to save animation")
 
     global args
     args = parser.parse_args()    

@@ -29,6 +29,14 @@ class CnnPolicy(object):
         def step(ob, *_args, **_kwargs):
             a, v = sess.run([a0, v0], {X:ob})
             return a, v, [] #dummy state
+            
+        def step_w_features(ob, *_args, **_kwargs):
+            a, v, features = sess.run([a0, v0, h3], {X:ob})
+            return a, v, features, [] #dummy state
+
+        def step_w_pi(ob, *_args, **_kwargs):
+            a, v, pi_0 = sess.run([a0, v0, pi], {X:ob})
+            return a, v, pi_0, [] #dummy state
 
         def value(ob, *_args, **_kwargs):
             return sess.run(v0, {X:ob})
@@ -37,6 +45,8 @@ class CnnPolicy(object):
         self.pi = pi
         self.vf = vf
         self.step = step
+        self.step_w_features = step_w_features
+        self.step_w_pi = step_w_pi
         self.value = value
 
 

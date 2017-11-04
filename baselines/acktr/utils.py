@@ -198,3 +198,52 @@ class EpisodeStats:
             return np.mean(self.rewbuffer)
         else:
             return 0
+
+class GeneratorNoiseInput:
+  def __init__(self, noiseSamples):
+    self.noiseSamples = noiseSamples
+    return
+  
+  def sample(self, numSamples):
+    samples = np.random.uniform(low=-1,high=1,size=[numSamples,self.noiseSamples])
+    #pprint(samples)
+    return samples
+    
+class DataDistribution:
+  def __init__(self, shuffle_data):
+    self.shuffle_data = shuffle_data
+    return
+    
+  def update_data(self, data):
+    self.obs = data["obs"]
+    self.pi = data["pi"]
+    assert len(self.obs) == len(self.pi), ('length mismatch')
+    self.num_examples = len(self.obs)
+    self.index_in_epoch = 0
+    self.epochs_completed = 0
+    
+    if self.shuffle_data:
+        perm = np.arange(self.num_examples)
+        np.random.shuffle(perm)
+        self.obs = self.obs[perm]
+        self.pi = self.pi[perm]
+    return
+  
+  def sample(self, numSamples):
+    start = self.index_in_epoch
+    self.index_in_epoch += numSamples
+    if self.index_in_epoch > self.num_examples:
+        # Finished epoch
+        self.epochs_completed += 1
+        if self.shuffle_data:
+            # Shuffle the data
+            perm = np.arange(self._num_examples)
+            np.random.shuffle(perm)
+            self.obs = self.obs[perm]
+            self.pi = self.pi[perm]
+        # Start next epoch
+        start = 0
+        self.index_in_epoch = numSamples
+        assert numSamples <= self.num_examples
+    end = self.index_in_epoch
+    return self.obs[start:end], self.pi[start:end], self.epochs_completed

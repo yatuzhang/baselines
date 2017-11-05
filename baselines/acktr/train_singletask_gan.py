@@ -18,7 +18,7 @@ class GAN():
         # WGAN hyperparams
         batch_size = 100
         discriminator_steps = 5
-        generator_steps = 5
+        generator_steps = 1
         input_noise_size = 100
         generator_learning_rate = 0.0003
         discriminator_learning_rate = 0.001
@@ -29,6 +29,8 @@ class GAN():
         adam_beta2 = 0.9
         num_epochs = 1 #epochs of generator updates before getting next simulation batch
         shuffle_data = False
+        summary_interval = 10
+        checkpoint_interval = 10
         
         # RL hyperparams
         total_timesteps=1e6 * args.million_frames
@@ -37,6 +39,9 @@ class GAN():
         nenvs = 1
         nstack = 4
         nsteps = 1
+        # Parameters for testing generator in game - not yet implemented
+        generator_simulation_interval = 20
+        generator_simulation_steps = 100
         
         env = gym.make(args.env)
         if logger.get_dir():
@@ -107,6 +112,13 @@ class GAN():
         discriminator_data_dis = DataDistribution(shuffle_data)
         generator_data_dis = DataDistribution(shuffle_data)
         
+        tf.summary.scalar('Wasserstein Distance',wasserstien_distance)
+        tf.summary.scalar('D_Loss',discriminator_loss)
+        tf.summary.scalar('D_Gradient_Penalty',gradient_penalty)
+        tf.summary.scalar('D_Expert_Score',tf.reduce_mean(discriminator_expert.discriminator_decision))
+        tf.summary.scalar('D_Generator_Score',tf.reduce_mean(discriminator_generator.discriminator_decision))
+        tf.summary.scalar('G_Loss',generator_loss)
+        
         def train():
             def update_obs(state_u, obs_u):
                 obs_u = np.reshape( obs_u, state_u.shape[0:3] )
@@ -115,6 +127,8 @@ class GAN():
                 return state_u
             tf.global_variables_initializer().run(session=sess)
             saver = tf.train.Saver(max_to_keep=2)
+            summary = tf.summary.merge_all()
+            summary_writer = tf.summary.FileWriter(args.ckpt_dir, sess.graph)
                        
             loaded_params = joblib.load(args.load_model_path)
             restores = []
@@ -129,8 +143,10 @@ class GAN():
             obs = env.reset()
             done = False
             
-            for i in range(math.ceil(total_timesteps / num_simulation)):
-                print("Running step {}".format(i))
+            total_steps = math.ceil(total_timesteps / num_simulation)
+            
+            for i in range(total_steps):
+                print("Running step {} of {}".format(i,total_steps))
                 # Get expert data
                 data = {}
                 data['obs'] = []
@@ -153,12 +169,20 @@ class GAN():
                 discriminator_data_dis.update_data(data)
                 generator_data_dis.update_data(data)
                 for j in range(math.ceil(num_epochs * num_simulation / (batch_size * generator_steps))):
+                    avg_distance = []
                     for k in range(discriminator_steps):
-                        sess.run(discriminator_opt_op, feed_dict=self.build_feed_dict(discriminator_data_dis, batch_size))
+                        distance, _ = sess.run([wasserstien_distance, discriminator_opt_op], feed_dict=self.build_feed_dict(discriminator_data_dis))
+                        avg_distance.append(distance)
                     for k in range(generator_steps):
-                        sess.run(generator_opt_op, feed_dict=self.build_feed_dict(generator_data_dis, batch_size))
-                checkpoint_file = os.path.join(args.ckpt_dir, 'checkpoint')
-                saver.save(sess, checkpoint_file, global_step=i)
+                        sess.run(generator_opt_op, feed_dict=self.build_feed_dict(generator_data_dis))
+                print("Current Wasserstein distance: {}".format(np.average(avg_distance)))
+                if i%checkpoint_interval == 0 or (i+1) == total_steps:
+                    checkpoint_file = os.path.join(args.ckpt_dir, 'checkpoint')
+                    saver.save(sess, checkpoint_file, global_step=i)
+                if i%summary_interval == 0 or (i+1) == total_steps:
+                    summary_str = sess.run(summary, feed_dict=self.build_feed_dict(generator_data_dis))
+                    summary_writer.add_summary(summary_str, i)
+                    summary_writer.flush()
             
         self.train = train
         self.generator_noise = generator_noise
@@ -167,9 +191,9 @@ class GAN():
         self.expert_pi = expert_pi
         self.batch_size = batch_size
     
-    def build_feed_dict(self, data_func, batch_size):
-        obs_data, pi_data, epochs = data_func.sample(batch_size)
-        generator_noise = self.generator_noise.sample(batch_size)
+    def build_feed_dict(self, data_func):
+        obs_data, pi_data, epochs = data_func.sample(self.batch_size)
+        generator_noise = self.generator_noise.sample(self.batch_size)
         feed_dict = {}
         feed_dict[self.obvs] = obs_data
         feed_dict[self.expert_pi] = pi_data

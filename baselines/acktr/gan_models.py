@@ -19,24 +19,15 @@ class CnnGenerator(object):
         v0 = vf[:, 0]
         a0 = sample(pi)
         self.initial_state = [] #not stateful
-
-        def step(ob, *_args, **_kwargs):
-            a, v = sess.run([a0, v0], {X:ob})
+        
+        def step(feed_dict, *_args, **_kwargs):
+            a, v = sess.run([a0, v0], feed_dict)
             return a, v, [] #dummy state
-            
-        def step_w_features(ob, *_args, **_kwargs):
-            a, v, features = sess.run([a0, v0, h3], {X:ob})
-            return a, v, features, [] #dummy state
-
-        def value(ob, *_args, **_kwargs):
-            return sess.run(v0, {X:ob})
 
         self.pi = pi
         self.vf = vf
-        self.step = step
-        self.step_w_features = step_w_features
-        self.value = value
         self.noise = noise
+        self.step = step
 
 class CnnDiscriminator(object):
     def __init__(self, sess, obvs, action_pi, batch_size, nstack, reuse=False):
@@ -53,10 +44,6 @@ class CnnDiscriminator(object):
             
         self.initial_state = [] #not stateful - ???
 
-        def decide(ob, action_dis, *_args, **_kwargs):
-            return sess.run(discriminator_decision, {})
-
         self.discriminator_decision = discriminator_decision
-        self.decide = decide
 
 # Could also have a CNN feature detector that feeds into both a generator and a discriminator

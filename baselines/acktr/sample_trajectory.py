@@ -65,6 +65,7 @@ def run():
             print("Exiting")
             exit()
         fig = plt.figure()
+        plt.axis('off')
         ims = []
         
     if args.save_trajectory:

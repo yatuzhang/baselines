@@ -1,4 +1,5 @@
 import os.path as osp
+import os
 import time
 import joblib
 import numpy as np
@@ -182,6 +183,8 @@ def learn(policy, env, seed, total_timesteps=int(40e6), gamma=0.99, log_interval
                                 lrschedule=lrschedule)
     if save_interval and ckpt_dir:
         import cloudpickle
+        if not os.path.exists(ckpt_dir):
+            os.makedirs(ckpt_dir)
         with open(osp.join(ckpt_dir, 'make_model.pkl'), 'wb') as fh:
             fh.write(cloudpickle.dumps(make_model))
     model = make_model()

@@ -83,7 +83,7 @@ def run():
         debug = 0
         while not done:
             if debug % 100 == 0:
-                print("In loop {]".format(debug))
+                print("In loop {}".format(debug))
             debug = debug + 1
             if args.save_ani:
                 im = plt.imshow(env.render(mode='rgb_array'))

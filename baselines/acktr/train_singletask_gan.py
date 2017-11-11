@@ -94,8 +94,8 @@ class GAN():
             gradient_penalty = _lambda*tf.reduce_mean((slopes-1.)**2)
         
         generator_loss = -tf.reduce_mean(discriminator_generator.discriminator_decision)
-        wasserstien_distance = tf.reduce_mean(discriminator_generator.discriminator_decision)-tf.reduce_mean(discriminator_expert.discriminator_decision)
-        discriminator_loss = wasserstien_distance + gradient_penalty
+        neg_wasserstien_distance = tf.reduce_mean(discriminator_generator.discriminator_decision)-tf.reduce_mean(discriminator_expert.discriminator_decision)
+        discriminator_loss = neg_wasserstien_distance + gradient_penalty
         
         vars = tf.trainable_variables()
         generator_params = [v for v in vars if v.name.startswith('Generator/')]
@@ -113,7 +113,7 @@ class GAN():
         discriminator_data_dis = DataDistribution(shuffle_data)
         generator_data_dis = DataDistribution(shuffle_data)
         
-        tf.summary.scalar('Wasserstein Distance',wasserstien_distance)
+        tf.summary.scalar('Wasserstein Distance',-1*neg_wasserstien_distance)
         tf.summary.scalar('D_Loss',discriminator_loss)
         tf.summary.scalar('D_Gradient_Penalty',gradient_penalty)
         tf.summary.scalar('D_Expert_Score',tf.reduce_mean(discriminator_expert.discriminator_decision))
@@ -172,8 +172,8 @@ class GAN():
                 for j in range(math.ceil(num_epochs * num_simulation / (batch_size * generator_steps))):
                     avg_distance = []
                     for k in range(discriminator_steps):
-                        distance, _ = sess.run([wasserstien_distance, discriminator_opt_op], feed_dict=self.build_feed_dict(discriminator_data_dis))
-                        avg_distance.append(distance)
+                        distance, _ = sess.run([neg_wasserstien_distance, discriminator_opt_op], feed_dict=self.build_feed_dict(discriminator_data_dis))
+                        avg_distance.append(-1*distance)
                     for k in range(generator_steps):
                         sess.run(generator_opt_op, feed_dict=self.build_feed_dict(generator_data_dis))
                 print("Current Wasserstein distance: {}".format(np.average(avg_distance)))

@@ -9,3 +9,5 @@
 - `python3 sample_trajectory.py --load_model_path "/some/dir/checkpoint01200"` loads the saved model and samples the trajectories for a default of 1500 episodes (does not save the trajectories, currently the sampling part is integrated in the GAN training code, so that expert trajectories are generated on the fly.  This is just so that you can sample trajectories and save an animation)
 - `python train_singletask_gan.py --load_model_path /some/dir --env "PongNoFrameskip-v4" --ckpt_dir /some/other/dir` trains a single task GAN from an trained expert saved at --load_model_path and saves the trained GAN model to --ckpt_dir
 -  `python sample_trajectory_gan.py --load_model_dir /some/dir --env "PongNoFrameskip-v4"` plays the game using the trained single task GAN
+
+Note: To get the same action space for all games, need to change self._action_set = self.ale.getMinimalActionSet() to self._action_set = self.ale.getLegalActionSet() in atari_env.py in the OpenAI gym files you installed

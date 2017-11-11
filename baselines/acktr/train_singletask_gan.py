@@ -33,7 +33,8 @@ class GAN():
         checkpoint_interval = 10
         
         # RL hyperparams
-        total_timesteps=1e6 * args.million_frames
+        total_timesteps = 1e6 * args.million_frames
+        total_timesteps = int(total_timesteps / 4 * 1.1) 
         num_simulation = 1000 #number of time steps to simulate expert before training GAN
         nprocs = 1
         nenvs = 1
@@ -212,7 +213,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--env', help='environment ID', default='BreakoutNoFrameskip-v4')
     parser.add_argument('--million_frames', help='How many frames to train (/ 1e6). '
-        'This number gets divided by 4 due to frameskip', type=int, default=1)
+        'This number gets divided by 4 due to frameskip', type=int, default=10)
     # parser.add_argument('--save_interval', help='How often to save model', type=int, default=1000)
     parser.add_argument('--ckpt_dir', help='GAN model save directory', default='.')
     parser.add_argument("--load_model_path", help="Loading the saved expert")

@@ -79,7 +79,11 @@ def run():
         obs = env.reset()
         done = False
         episode_reward = 0
+        debug = 0
         while not done:
+            if debug % 100 == 0:
+                print("In loop {]".format(debug))
+            debug = debug + 1
             if args.save_ani:
                 im = plt.imshow(env.render(mode='rgb_array'))
                 ims.append([im])

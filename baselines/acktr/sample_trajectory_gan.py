@@ -2,7 +2,7 @@
     To train: python3 ./run_atari.py
         You'll need to add "logger.configure(<some dir>)" to run_atari.py so it will save checkpoint files
     Then run this script with a checkpoint file as the argument
-    A running average of the past 100 rewards will be printed
+    A running average of the past 100 rewards will be logger.loged
 """
 from collections import deque
 import gym
@@ -52,7 +52,6 @@ def run():
 
     state_space = env.observation_space
     action_space = env.action_space
-    print(env.unwrapped.get_action_meanings())
     nh, nw, nc = state_space.shape
     batch_state_shape = (nenvs*nsteps, nh, nw, nc*nstack)
     
@@ -73,9 +72,9 @@ def run():
       restorer = tf.train.Saver(var_list=vars_to_restore)
       restorer.restore(sess, ckpt.model_checkpoint_path)
       restore = tf.train.latest_checkpoint(args.load_model_dir)
-      print("Restored :{}".format(restore))      
+      logger.log("Restored :{}".format(restore))      
     else:
-      print("Error in restoring model")
+      logger.log("Error in restoring model")
       exit()
     
     episode = 1
@@ -83,8 +82,8 @@ def run():
     
     if args.save_ani:
         if args.max_episodes == 0 or args.max_episodes > 10:
-            print("Are you sure you want to save that many episodes?")
-            print("Exiting")
+            logger.log("Are you sure you want to save that many episodes?")
+            logger.log("Exiting")
             exit()
         fig = plt.figure()
         plt.axis('off')

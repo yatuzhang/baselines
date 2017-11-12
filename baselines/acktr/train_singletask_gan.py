@@ -42,7 +42,8 @@ class GAN():
         nsteps = 1
         # Parameters for testing generator in game - not yet implemented
         generator_simulation_interval = 20
-        generator_simulation_steps = 100
+        generator_simulation_steps = 1000
+        generator_simulation_num_trajs = 10
         
         env = gym.make(args.env)
         if logger.get_dir():
@@ -59,7 +60,7 @@ class GAN():
         nh, nw, nc = state_space.shape
         batch_state_shape = (nenvs*nsteps, nh, nw, nc*nstack)
         batch_state_reshape = (nh, nw, nc*nstack)
-        batch_obs_shape = (batch_size, nh, nw, nc*nstack)
+        batch_obs_shape = (None, nh, nw, nc*nstack)
         
         config = tf.ConfigProto(allow_soft_placement=True,
                                 intra_op_parallelism_threads=nprocs,
@@ -69,7 +70,7 @@ class GAN():
         
         # Create placeholders
         obvs = tf.placeholder(tf.uint8, batch_obs_shape)
-        expert_pi = tf.placeholder(tf.float32, [batch_size, action_shape])
+        expert_pi = tf.placeholder(tf.float32, [None, action_shape])
         
         with tf.variable_scope("Generator"):
             generator = CnnGenerator(sess, obvs, action_space, noise_size, batch_size, nstack)
@@ -82,14 +83,14 @@ class GAN():
             alpha = tf.random_uniform([batch_size,1])
             differences = generator.pi - expert_pi
             interpolates = expert_pi + alpha*differences
-            # print(interpolates.get_shape())
+            # logger.log(interpolates.get_shape())
             discriminator_gradient = CnnDiscriminator(sess, obvs, interpolates, batch_size, nstack, reuse=True)
             
             results = discriminator_gradient.discriminator_decision
-            # print(results.get_shape())
+            # logger.log(results.get_shape())
             
             gradients = tf.gradients(results, [interpolates])[0]
-            # print(gradients.get_shape())
+            # logger.log(gradients.get_shape())
             slopes = tf.sqrt(tf.reduce_sum(tf.square(tf.reshape(gradients,[batch_size,-1])), reduction_indices=[1]))
             gradient_penalty = _lambda*tf.reduce_mean((slopes-1.)**2)
         
@@ -113,13 +114,50 @@ class GAN():
         discriminator_data_dis = DataDistribution(shuffle_data)
         generator_data_dis = DataDistribution(shuffle_data)
         
-        tf.summary.scalar('Wasserstein Distance',-1*neg_wasserstien_distance)
-        tf.summary.scalar('D_Loss',discriminator_loss)
-        tf.summary.scalar('D_Gradient_Penalty',gradient_penalty)
-        tf.summary.scalar('D_Expert_Score',tf.reduce_mean(discriminator_expert.discriminator_decision))
-        tf.summary.scalar('D_Generator_Score',tf.reduce_mean(discriminator_generator.discriminator_decision))
-        tf.summary.scalar('G_Loss',generator_loss)
+        #Defining training statistics
+        tf.summary.scalar('Wasserstein Distance',-1*neg_wasserstien_distance, collections=['train'])
+        tf.summary.scalar('D_Loss',discriminator_loss, collections=['train'])
+        tf.summary.scalar('D_Gradient_Penalty',gradient_penalty, collections=['train'])
+        tf.summary.scalar('D_Expert_Score',tf.reduce_mean(discriminator_expert.discriminator_decision), collections=['train'])
+        tf.summary.scalar('D_Generator_Score',tf.reduce_mean(discriminator_generator.discriminator_decision), collections=['train'])
+        tf.summary.scalar('G_Loss',generator_loss, collections=['train'])
         
+        #Defining evaluating statistics
+        average_reward = tf.placeholder(tf.float32, shape=())
+        tf.summary.scalar('Avgerage Reward', average_reward, collections=['evaluate'])
+
+        def evaluate(env):
+            def update_obs(state_u, obs_u):
+                obs_u = np.reshape( obs_u, state_u.shape[0:3] )
+                state_u = np.roll(state_u, shift=-1, axis=3)
+                state_u[:, :, :, -1] = obs_u
+                return state_u
+            episode = 0
+            rewards = []
+            while episode < generator_simulation_num_trajs:
+                state = np.zeros(batch_state_shape, dtype=np.uint8)
+
+                obs = env.reset()
+                done = False
+                episode_reward = 0
+                step = 0
+                while step < generator_simulation_steps and not done:
+                    state = update_obs(state,obs)
+                    
+                    # Build feed_dict
+                    feed_dict = {}
+                    feed_dict[obvs] = state
+                    feed_dict[generator.noise] = generator_noise.sample(1)
+                    
+                    actions, values, _ = self.generator.step(feed_dict)
+                    obs, rew, done, _ = env.step(actions[0])
+                    episode_reward += rew
+                    step += 1
+
+                rewards.append(episode_reward)
+                episode += 1
+            return np.mean(rewards)
+
         def train():
             def update_obs(state_u, obs_u):
                 obs_u = np.reshape( obs_u, state_u.shape[0:3] )
@@ -128,9 +166,13 @@ class GAN():
                 return state_u
             tf.global_variables_initializer().run(session=sess)
             saver = tf.train.Saver(max_to_keep=2)
-            summary = tf.summary.merge_all()
+            summary_train = tf.summary.merge_all('train')
+            summary_evaluate = tf.summary.merge_all('evaluate')
+
+            if not os.path.exists(args.ckpt_dir):
+                os.makedirs(args.ckpt_dir)
             summary_writer = tf.summary.FileWriter(args.ckpt_dir, sess.graph)
-                       
+
             loaded_params = joblib.load(args.load_model_path)
             restores = []
             for p, loaded_p in zip(expert_params, loaded_params):
@@ -147,7 +189,17 @@ class GAN():
             total_steps = math.ceil(total_timesteps / num_simulation)
             
             for i in range(total_steps):
-                print("Running step {} of {}".format(i,total_steps))
+                logger.log("Running step {} of {}".format(i,total_steps))
+
+                if i % generator_simulation_interval == 0:
+                    logger.log("Evaluating GAN model at step {} of {}".format(i, total_steps))
+                    val = evaluate(env)
+                    logger.log("Average Reward of current GAN: {}".format(val))
+                    summary_evaluate_str, rew = sess.run([summary_evaluate, average_reward], feed_dict={average_reward: val})
+                    summary_writer.add_summary(summary_evaluate_str, i)
+                    summary_writer.flush()
+                    obs = env.reset()
+
                 # Get expert data
                 data = {}
                 data['obs'] = []
@@ -176,12 +228,12 @@ class GAN():
                         avg_distance.append(-1*distance)
                     for k in range(generator_steps):
                         sess.run(generator_opt_op, feed_dict=self.build_feed_dict(generator_data_dis))
-                print("Current Wasserstein distance: {}".format(np.average(avg_distance)))
+                logger.log("Current Wasserstein distance: {}".format(np.average(avg_distance)))
                 if i%checkpoint_interval == 0 or (i+1) == total_steps:
                     checkpoint_file = os.path.join(args.ckpt_dir, 'checkpoint')
                     saver.save(sess, checkpoint_file, global_step=i)
                 if i%summary_interval == 0 or (i+1) == total_steps:
-                    summary_str = sess.run(summary, feed_dict=self.build_feed_dict(generator_data_dis))
+                    summary_str = sess.run(summary_train, feed_dict=self.build_feed_dict(generator_data_dis))
                     summary_writer.add_summary(summary_str, i)
                     summary_writer.flush()
             
@@ -191,6 +243,7 @@ class GAN():
         self.obvs = obvs
         self.expert_pi = expert_pi
         self.batch_size = batch_size
+        self.average_reward = average_reward
     
     def build_feed_dict(self, data_func):
         obs_data, pi_data, epochs = data_func.sample(self.batch_size)

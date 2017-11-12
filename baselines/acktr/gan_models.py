@@ -5,7 +5,7 @@ from baselines.acktr.utils import conv, fc, dense, conv_to_fc, sample, kl_div
 class CnnGenerator(object):
     def __init__(self, sess, obvs, ac_space, noise_size, batch_size, nstack, reuse=False):
         nact = ac_space.n
-        noise = tf.placeholder(tf.float32, [batch_size, noise_size])
+        noise = tf.placeholder(tf.float32, [None, noise_size])
         with tf.variable_scope("model", reuse=reuse):
             h = conv(tf.cast(obvs, tf.float32)/255., 'c1', nf=32, rf=8, stride=4, init_scale=np.sqrt(2))
             h2 = conv(h, 'c2', nf=64, rf=4, stride=2, init_scale=np.sqrt(2))

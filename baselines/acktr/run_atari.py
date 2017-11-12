@@ -13,6 +13,8 @@ def train(env_id, num_frames, seed, num_cpu, save_interval, ckpt_dir):
     def make_env(rank):
         def _thunk():
             env = gym.make(env_id)
+            # check to ensure full action space is used
+            assert env.action_space.n == 18, "amount of actions in action space is :{}, not equal to full action space".format(env.action_space.n)
             env.seed(seed + rank)
             if logger.get_dir():
                 env = bench.Monitor(env, os.path.join(logger.get_dir(), "{}.monitor.json".format(rank)))

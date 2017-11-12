@@ -32,6 +32,8 @@ def update_obs(state, obs):
 
 def run():
     env = gym.make(args.env)
+    # check to ensure full action space is used
+    assert env.action_space.n == 18, "amount of actions in action space is :{}, not equal to full action space".format(env.action_space.n)
     if logger.get_dir():
         env = bench.Monitor(env, os.path.join(logger.get_dir(), "sample.monitor.json"))
     gym.logger.setLevel(logging.WARN)

@@ -134,8 +134,10 @@ class GAN():
         tf.summary.scalar('G_Loss',generator_loss, collections=['train'])
         
         #Defining evaluating statistics
-        average_reward = tf.placeholder(tf.float32, shape=())
-        tf.summary.scalar('Avgerage Reward', average_reward, collections=['evaluate'])
+        average_reward = []
+        for i in range(args.nenvs):
+            average_reward.append(tf.placeholder(tf.float32, shape=()))
+            tf.summary.scalar('Avgerage_Reward_'+args.env[i] , average_reward[i], collections=['evaluate_'+args.env[i]])
 
         def evaluate(env):
             def update_obs(state_u, obs_u):
@@ -178,7 +180,9 @@ class GAN():
             tf.global_variables_initializer().run(session=sess)
             saver = tf.train.Saver(max_to_keep=2)
             summary_train = tf.summary.merge_all('train')
-            summary_evaluate = tf.summary.merge_all('evaluate')
+            summary_evaluate = []
+            for i in range(args.nenvs):
+                summary_evaluate.append(tf.summary.merge_all('evaluate_'+args.env[i]))
 
             if not os.path.exists(args.ckpt_dir):
                 os.makedirs(args.ckpt_dir)
@@ -208,16 +212,18 @@ class GAN():
             for i in range(total_steps):
                 logger.log("Running step {} of {}".format(i,total_steps))
 
-                # if i % generator_simulation_interval == 0:
-                    # logger.log("Evaluating GAN model at step {} of {}".format(i, total_steps))
-                    # val = evaluate(env)
-                    # logger.log("Average Reward of current GAN: {}".format(val))
-                    # summary_evaluate_str, rew = sess.run([summary_evaluate, average_reward], feed_dict={average_reward: val})
-                    # summary_writer.add_summary(summary_evaluate_str, i)
-                    # summary_writer.flush()
-                    # obs = env.reset()
+                if i % generator_simulation_interval == 0:
+                    val = np.zeros(args.nenvs)
+                    for k in range(args.nenvs):
+                        logger.log("Evaluating GAN model on task {} at step {} of {}".format(args.env[k], i, total_steps))
+                        val[k] = evaluate(envs[k])
+                        logger.log("Average Reward of current GAN on task {}: {}".format(args.env[k], val[k]))
+                        summary_evaluate_str, rew = sess.run([summary_evaluate[k], average_reward[k]], feed_dict={average_reward[k]: val[k]})
+                        summary_writer.add_summary(summary_evaluate_str, i)
+                        summary_writer.flush()
+                        envs[k].reset()
 
-                # Get expert data
+                #Get expert data
                 data = {}
                 data['obs'] = []
                 data['pi'] = []

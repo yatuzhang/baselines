@@ -45,11 +45,11 @@ class GAN():
         generator_simulation_steps = 1000
         generator_simulation_num_trajs = 10
         
-        env = gym.make(args.env)
+        env = gym.make(args.env,)
         if logger.get_dir():
             env = bench.Monitor(env, os.path.join(logger.get_dir(), "sample.monitor.json"))
         gym.logger.setLevel(logging.WARN)
-        env = wrap_deepmind(env)
+        env = wrap_deepmind(env, clip_rewards=False)
 
         tf.reset_default_graph()
         set_global_seeds(0)

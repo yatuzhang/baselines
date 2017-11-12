@@ -215,8 +215,8 @@ class DataDistribution:
     return
     
   def update_data(self, data):
-    self.obs = data["obs"]
-    self.pi = data["pi"]
+    self.obs = np.array(data["obs"])
+    self.pi = np.array(data["pi"])
     assert len(self.obs) == len(self.pi), ('length mismatch')
     self.num_examples = len(self.obs)
     self.index_in_epoch = 0
@@ -237,7 +237,7 @@ class DataDistribution:
         self.epochs_completed += 1
         if self.shuffle_data:
             # Shuffle the data
-            perm = np.arange(self._num_examples)
+            perm = np.arange(self.num_examples)
             np.random.shuffle(perm)
             self.obs = self.obs[perm]
             self.pi = self.pi[perm]

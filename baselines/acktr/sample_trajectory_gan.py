@@ -103,7 +103,7 @@ def run():
         debug = 0
         # add game step counter to ensure max amount of game play time
         game_steps_played = 0
-        while not done and game_steps_played <= 1000:
+        while not done:
             if debug % 100 == 0:
                 print("In loop {}".format(debug))
             debug = debug + 1
@@ -122,9 +122,13 @@ def run():
             episode_reward += rew
             if args.save_trajectory:
                 states_arr.append(state)
+                # This line seems to be problematic (with save_trajectory option enabled)
                 features_arr.append(features)
                 action_values.append(actions)
             game_steps_played += 1
+            if(game_steps_played == 5000):
+                print("Have run {} game steps without lossing the game. Exiting the game episode...".format(5000))
+                break
         if args.save_ani:
             ani = animation.ArtistAnimation(fig, ims, interval=20)
             ani.save(os.path.join(args.save_ani_path,'episode_{}.mp4'.format(episode)))

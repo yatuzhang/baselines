@@ -128,7 +128,7 @@ def run():
                 features_arr.append(features)
                 action_values.append(actions)
             game_steps_played += 1
-            if(game_steps_played == 5000):
+            if(game_steps_played == 6000):
                 print("Have run {} game steps without lossing the game. Exiting the game episode...".format(5000))
                 break
         if args.save_ani:

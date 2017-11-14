@@ -241,6 +241,10 @@ class GAN():
                         data['obs'].append(state[j].reshape(batch_state_reshape))
                         data['pi'].append(pi.reshape(action_shape))
                         obs[j], rew, done[j], _ = envs[j].step(actions[0])
+                    # There might be a case that after collecting these many trajectories the game was left terminated, which would affect later reset that triggers step games with no-ops
+                    # Just check whether it's done, and if it's the case, reset it
+                    if done[j]:
+                        _ = envs[j].reset() # not sure if state[j] and states[j] assignments are needed like above for invoking different reset functions
 
                 discriminator_data_dis.update_data(data)
                 generator_data_dis.update_data(data)
@@ -297,5 +301,6 @@ if __name__ == '__main__':
 
     global args
     args = parser.parse_args()
+    
     assert int(args.nenvs) == int(len(args.env)), "Number of envs {} does not match length of env list {}".format(args.nenvs, len(args.env))
     run()

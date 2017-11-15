@@ -49,12 +49,19 @@ class GAN():
         #Make a list of envs
         gym.logger.setLevel(logging.WARN)
         envs = []
+        eval_envs = []
         for i in range(args.nenvs):
           env = gym.make(args.env[i])
           if logger.get_dir():
-              env = bench.Monitor(env, os.path.join(logger.get_dir(), "sample.monitor.json"))
+              env = bench.Monitor(env, os.path.join(logger.get_dir(), "expert_%s.monitor.json" %(args.env[i])))
           env = wrap_deepmind(env, clip_rewards=False)
           envs.append(env)
+        for i in range(args.nenvs):
+          env = gym.make(args.env[i])
+          if logger.get_dir():
+              env = bench.Monitor(env, os.path.join(logger.get_dir(), "gan_%s.monitor.json" %(args.env[i])))
+          env = wrap_deepmind(env, clip_rewards=False)
+          eval_envs.append(env)
 
         tf.reset_default_graph()
         set_global_seeds(0)
@@ -149,12 +156,11 @@ class GAN():
             rewards = []
             while episode < generator_simulation_num_trajs:
                 state = np.zeros(batch_state_shape, dtype=np.uint8)
-
                 obs = env.reset()
                 done = False
                 episode_reward = 0
                 step = 0
-                while step < generator_simulation_steps and not done:
+                while not done:
                     state = update_obs(state,obs)
                     
                     # Build feed_dict
@@ -216,12 +222,12 @@ class GAN():
                     val = np.zeros(args.nenvs)
                     for k in range(args.nenvs):
                         logger.log("Evaluating GAN model on task {} at step {} of {}".format(args.env[k], i, total_steps))
-                        val[k] = evaluate(envs[k])
+                        val[k] = evaluate(eval_envs[k])
                         logger.log("Average Reward of current GAN on task {}: {}".format(args.env[k], val[k]))
                         summary_evaluate_str, rew = sess.run([summary_evaluate[k], average_reward[k]], feed_dict={average_reward[k]: val[k]})
                         summary_writer.add_summary(summary_evaluate_str, i)
                         summary_writer.flush()
-                        envs[k].reset()
+                        eval_envs[k].reset()
 
                 #Get expert data
                 data = {}

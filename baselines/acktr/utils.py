@@ -4,6 +4,11 @@ import tensorflow as tf
 import baselines.common.tf_util as U
 from collections import deque
 
+import matplotlib as mpl
+mpl.use('Agg')
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+
 def sample(logits):
     noise = tf.random_uniform(tf.shape(logits))
     return tf.argmax(logits - tf.log(-tf.log(noise)), 1)
@@ -49,6 +54,16 @@ def conv(x, scope, nf, rf, stride, pad='VALID', act=tf.nn.relu, init_scale=1.0):
         w = tf.get_variable("w", [rf, rf, nin, nf], initializer=ortho_init(init_scale))
         b = tf.get_variable("b", [nf], initializer=tf.constant_initializer(0.0))
         z = tf.nn.conv2d(x, w, strides=[1, stride, stride, 1], padding=pad)+b
+        h = act(z)
+        return h
+        
+def deconv(x, scope, nf, rf, stride, output_size, pad='VALID', act=tf.nn.relu, init_scale=1.0):
+    with tf.variable_scope(scope):
+        nin = x.get_shape()[3].value
+        w = tf.get_variable("w", [rf, rf, nf, nin], initializer=ortho_init(init_scale))
+        b = tf.get_variable("b", [nf], initializer=tf.constant_initializer(0.0))
+        z = tf.nn.conv2d_transpose(x, w, tf.stack(output_size), strides=[1, stride, stride, 1], padding=pad)
+        z = tf.nn.bias_add(z, b)
         h = act(z)
         return h
 
@@ -137,6 +152,36 @@ def double_middle_drop(p):
             return eps2*0.5
         return eps1*0.1
     return 1-p
+    
+def plot_vae(data, generated_sample, trainStep, number, append=False, vmin=None, vmax=None):
+    fig, (ax1, ax2) = plt.subplots(nrows=2)
+    
+    if vmin is None:
+      vmin = min(np.min(data), np.min(generated_sample))
+    if vmax is None:
+      vmax = max(np.max(data), np.max(generated_sample))
+    
+    colour1 = ax1.imshow(data, cmap='gray', interpolation='nearest', aspect='auto', vmin=vmin, vmax=vmax)
+    colour2 = ax2.imshow(generated_sample, cmap='gray', interpolation='nearest', aspect='auto', vmin=vmin, vmax=vmax)
+    
+    ax1.set_title('training data')
+    
+    ax2.set_title('generated data')
+        
+    fig.subplots_adjust(right=0.8)
+    cbar_ax = fig.add_axes([0.85, 0.15, 0.05, 0.7])
+    fig.colorbar(colour1, cax=cbar_ax)
+    # fig.colorbar(colour2, ax=ax2)
+
+
+    if append:
+      name = './results/Pictures/Output_Step{}_{}_{}.png'.format(trainStep,number,append)
+    else:
+      name = './results/Pictures/Output_Step{}_{}.png'.format(trainStep,number)
+    #save
+    fig.savefig(name, dpi=300)
+
+    plt.close(fig)
 
 
 schedules = {

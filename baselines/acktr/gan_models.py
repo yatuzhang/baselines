@@ -46,4 +46,24 @@ class CnnDiscriminator(object):
 
         self.discriminator_decision = discriminator_decision
 
+class FCGenerator(object):
+    def __init__(self, sess, features, ac_space, noise_size, batch_size, nstack, reuse=False):
+        nact = ac_space.n
+        with tf.variable_scope("model", reuse=reuse):
+            h4 = fc(features, 'fc1', nh=512, init_scale=np.sqrt(2))
+            pi = fc(h4, 'pi', nact, act=lambda x:x)
+            vf = fc(h4, 'v', 1, act=lambda x:x)
+
+        v0 = vf[:, 0]
+        a0 = sample(pi)
+        self.initial_state = [] #not stateful
+        
+        def step(feed_dict, *_args, **_kwargs):
+            a, v = sess.run([a0, v0], feed_dict)
+            return a, v, [] #dummy state
+
+        self.pi = pi
+        self.vf = vf
+        self.step = step
+
 # Could also have a CNN feature detector that feeds into both a generator and a discriminator

@@ -62,10 +62,6 @@ def run():
     rewards= deque(maxlen=100)
     
     if args.save_ani:
-        if args.max_episodes == 0 or args.max_episodes > 10:
-            print("Are you sure you want to save that many episodes?")
-            print("Exiting")
-            exit()
         fig = plt.figure()
         plt.axis('off')
         ims = []

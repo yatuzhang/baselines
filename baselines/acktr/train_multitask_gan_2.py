@@ -10,8 +10,8 @@ from baselines.acktr.policies import CnnPolicy
 from baselines.common import set_global_seeds
 from baselines import logger
 from baselines import bench
-from baselines.acktr.utils import GeneratorNoiseInput, DataDistribution
-from baselines.acktr.gan_models import CnnGenerator, CnnDiscriminator
+from baselines.acktr.utils_2 import GeneratorNoiseInput, DataDistribution
+from baselines.acktr.gan_models_2 import CnnGenerator, CnnDiscriminator
 
 class GAN():
     def __init__(self):
@@ -27,7 +27,7 @@ class GAN():
         _lambda = 10
         adam_beta1 = 0.5
         adam_beta2 = 0.9
-        num_epochs = 1 #epochs of generator updates before getting next simulation batch
+        num_epochs = 1 # epochs of generator updates before getting next simulation batch
         shuffle_data = False
         summary_interval = 10
         checkpoint_interval = 10
@@ -38,7 +38,6 @@ class GAN():
         num_simulation = 1000 #number of time steps to simulate expert before training GAN
         num_simulation_per_exerpt = int(1000 / args.nenvs) #number of time steps to simulate expert before training GAN
         nprocs = 1
-        # nenvs = 1
         nstack = 4
         nsteps = 1
         # Parameters for testing generator in game - not yet implemented
@@ -83,29 +82,28 @@ class GAN():
         # Create placeholders
         obvs = tf.placeholder(tf.uint8, batch_obs_shape)
         expert_pi = tf.placeholder(tf.float32, [None, action_shape])
+        v_envs = tf.placeholder(tf.float32, [None, args.nenvs]) # One hot vector, indicates game being played
         
         with tf.variable_scope("Generator"):
-            generator = CnnGenerator(sess, obvs, action_space, noise_size, batch_size, nstack)
+            generator = CnnGenerator(sess, obvs, action_space, noise_size, batch_size, nstack, v_envs, args.nenvs)
+
         experts = []
         for i in range(args.nenvs):
             with tf.variable_scope("Expert_{}".format(i)):
                 expert = CnnPolicy(sess, state_space, action_space, 1, nsteps, nstack)
             experts.append(expert)
         with tf.variable_scope("Discriminator"):
-            discriminator_generator = CnnDiscriminator(sess, obvs, generator.pi, batch_size, nstack)
-            discriminator_expert = CnnDiscriminator(sess, obvs, expert_pi, batch_size, nstack, reuse=True)
+            discriminator_generator = CnnDiscriminator(sess, obvs, generator.pi, batch_size, nstack, v_envs, args.nenvs)
+            discriminator_expert = CnnDiscriminator(sess, obvs, expert_pi, batch_size, nstack, v_envs, args.nenvs, reuse=True)
             
             alpha = tf.random_uniform([batch_size,1])
             differences = generator.pi - expert_pi
             interpolates = expert_pi + alpha*differences
-            # logger.log(interpolates.get_shape())
-            discriminator_gradient = CnnDiscriminator(sess, obvs, interpolates, batch_size, nstack, reuse=True)
+            discriminator_gradient = CnnDiscriminator(sess, obvs, interpolates, batch_size, nstack, v_envs, args.nenvs, reuse=True)
             
             results = discriminator_gradient.discriminator_decision
-            # logger.log(results.get_shape())
             
             gradients = tf.gradients(results, [interpolates])[0]
-            # logger.log(gradients.get_shape())
             slopes = tf.sqrt(tf.reduce_sum(tf.square(tf.reshape(gradients,[batch_size,-1])), reduction_indices=[1]))
             gradient_penalty = _lambda*tf.reduce_mean((slopes-1.)**2)
         
@@ -146,7 +144,7 @@ class GAN():
             average_reward.append(tf.placeholder(tf.float32, shape=()))
             tf.summary.scalar('Avgerage_Reward_'+args.env[i] , average_reward[i], collections=['evaluate_'+args.env[i]])
 
-        def evaluate(env):
+        def evaluate(env, k):
             def update_obs(state_u, obs_u):
                 obs_u = np.reshape( obs_u, state_u.shape[0:3] )
                 state_u = np.roll(state_u, shift=-1, axis=3)
@@ -166,6 +164,7 @@ class GAN():
                     # Build feed_dict
                     feed_dict = {}
                     feed_dict[obvs] = state
+                    feed_dict[v_envs] = np.array([1.0 if zzz == k else 0.0 for zzz in range(args.nenvs)]).reshape(-1, args.nenvs)
                     feed_dict[generator.noise] = generator_noise.sample(1)
                     
                     actions, values, _ = self.generator.step(feed_dict)
@@ -222,7 +221,7 @@ class GAN():
                     val = np.zeros(args.nenvs)
                     for k in range(args.nenvs):
                         logger.log("Evaluating GAN model on task {} at step {} of {}".format(args.env[k], i, total_steps))
-                        val[k] = evaluate(eval_envs[k])
+                        val[k] = evaluate(eval_envs[k], k)
                         logger.log("Average Reward of current GAN on task {}: {}".format(args.env[k], val[k]))
                         summary_evaluate_str, rew = sess.run([summary_evaluate[k], average_reward[k]], feed_dict={average_reward[k]: val[k]})
                         summary_writer.add_summary(summary_evaluate_str, i)
@@ -233,7 +232,8 @@ class GAN():
                 data = {}
                 data['obs'] = []
                 data['pi'] = []
-                
+                data['v_envs'] = []
+
                 for j in range(args.nenvs):
                     for l in range(num_simulation_per_exerpt):
                         if done[j]:
@@ -246,6 +246,9 @@ class GAN():
                         actions, values, pi, states[j] = act[j](state[j], states[j], [done])
                         data['obs'].append(state[j].reshape(batch_state_reshape))
                         data['pi'].append(pi.reshape(action_shape))
+                        # One hot vector for current game
+                        one_hot = np.array([1.0 if zzz == j else 0.0 for zzz in range(args.nenvs)]).astype(np.float32)
+                        data['v_envs'].append(one_hot) 
                         obs[j], rew, done[j], _ = envs[j].step(actions[0])
                     # There might be a case that after collecting these many trajectories the game was left terminated, which would affect later reset that triggers step games with no-ops
                     # Just check whether it's done, and if it's the case, reset it
@@ -274,17 +277,20 @@ class GAN():
         self.generator_noise = generator_noise
         self.generator = generator
         self.obvs = obvs
+        self.v_envs = v_envs
         self.expert_pi = expert_pi
         self.batch_size = batch_size
         self.average_reward = average_reward
     
     def build_feed_dict(self, data_func):
-        obs_data, pi_data, epochs = data_func.sample(self.batch_size)
+        obs_data, pi_data, v_envs_data, epochs = data_func.sample(self.batch_size)
         generator_noise = self.generator_noise.sample(self.batch_size)
+
         feed_dict = {}
         feed_dict[self.obvs] = obs_data
         feed_dict[self.expert_pi] = pi_data
         feed_dict[self.generator.noise] = generator_noise
+        feed_dict[self.v_envs] = v_envs_data
         
         return feed_dict
             

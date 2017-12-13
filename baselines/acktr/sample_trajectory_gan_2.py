@@ -16,8 +16,8 @@ from baselines.acktr.policies import CnnPolicy
 from baselines.common import set_global_seeds, explained_variance
 from baselines import logger
 from baselines import bench
-from baselines.acktr.utils import GeneratorNoiseInput
-from baselines.acktr.gan_models import CnnGenerator
+from baselines.acktr.utils_2 import GeneratorNoiseInput
+from baselines.acktr.gan_models_2 import CnnGenerator
 
 import matplotlib as mpl
 mpl.use('Agg')
@@ -46,11 +46,15 @@ def run():
     generator_noise = GeneratorNoiseInput(noise_size)
 
     total_timesteps=int(40e6)
-    nprocs = 2
+    nprocs = 1
     nenvs = 1
     nstack = 4
     nsteps = 1
-    nenvs = 1
+
+    args.env_num = int(args.env_num)
+    args.nenvs = int(args.nenvs)
+    xxxx = np.array([1.0 if zzz == args.env_num else 0.0 for zzz in range(args.nenvs)]).reshape(-1, args.nenvs)
+    print(xxxx)
 
     state_space = env.observation_space
     action_space = env.action_space
@@ -64,10 +68,11 @@ def run():
     sess = tf.Session(config=config)
 
     obvs = tf.placeholder(tf.uint8, batch_state_shape)
+    v_envs = tf.placeholder(tf.float32, [None, args.nenvs]) # One hot vector, indicates game being played
     
     with tf.variable_scope("Generator"):
-        generator=CnnGenerator(sess, obvs, action_space, noise_size, 1, nstack)
-        
+        generator=CnnGenerator(sess, obvs, action_space, noise_size, 1, nstack, v_envs, args.nenvs)
+
     ckpt = tf.train.get_checkpoint_state(args.load_model_dir)
     if ckpt and ckpt.model_checkpoint_path:
       vars_to_restore = tf.trainable_variables()
@@ -118,6 +123,7 @@ def run():
             feed_dict = {}
             feed_dict[obvs] = state
             feed_dict[generator.noise] = generator_noise.sample(1)
+            feed_dict[v_envs] = np.array([1.0 if zzz == args.env_num else 0.0 for zzz in range(args.nenvs)]).reshape(-1, args.nenvs)
             
             actions, values, _ = generator.step(feed_dict)
             obs, rew, done, _ = env.step(actions[0])
@@ -157,6 +163,8 @@ if __name__ == '__main__':
     parser.add_argument("--save_trajectory", type=bool, default=False, help="Saves an animation of the run")
     parser.add_argument("--save_ani", type=bool, default=False, help="Saves an animation of the run")
     parser.add_argument("--save_ani_path", default='./', help="directory to save animation")
+    parser.add_argument("--nenvs", default='./', help="number of envs trained on")
+    parser.add_argument("--env_num", default='./', help="the env index you are currently playing")
 
     global args
     args = parser.parse_args()    

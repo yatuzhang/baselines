@@ -10,7 +10,7 @@ from baselines.acktr.policies import CnnPolicy
 from baselines.common import set_global_seeds
 from baselines import logger
 from baselines import bench
-from baselines.acktr.utils import GeneratorNoiseInput, DataDistribution
+from baselines.acktr.utils_2 import GeneratorNoiseInput, DataDistribution
 from baselines.acktr.gan_models_2 import CnnGenerator, CnnDiscriminator
 
 class GAN():
